@@ -1,4 +1,4 @@
-# ecDNA-Alignment
+# SVRecalibrator
 
 Tools to collect reads around structural-variant (SV) breakpoints and refine predictions using split-read evidence and optional de-novo scaffolds.
 
@@ -6,7 +6,7 @@ Tools to collect reads around structural-variant (SV) breakpoints and refine pre
 
 * Linux / macOS (bash)
 * **git**
-* **conda** (with the **libmamba** solver enabled; conda ≥ 23 recommended)
+* **conda**
 
 ---
 
@@ -20,15 +20,16 @@ git clone https://github.com/tshneour/ecDNA-Alignment.git
 
 ---
 
-## 2. Create conda environment and install requirements (default solver)
+## 2. Create conda environment and install requirements
 
 Use conda with strict channel priority to ensure consistent dependency resolution across conda-forge and bioconda:
 
 ```bash
-conda create -n sv-analysis \
-  --override-channels --strict-channel-priority \
-  -c conda-forge -c bioconda -c defaults \
-  python=3.11 spades=4.2.0 samtools pysam biopython pandas numpy natsort marisa-trie
+
+conda create -n sv-analysis "python>=3.11,<=3.14.0a0"
+conda activate sv-analysis
+conda install -c bioconda biopython pysam samtools spades=4.2.0
+conda install pandas numpy natsort marisa-trie
 
 conda activate sv-analysis
 ```
