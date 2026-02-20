@@ -15,7 +15,7 @@ Tools to collect reads around structural-variant (SV) breakpoints and refine pre
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/tshneour/ecDNA-Alignment.git
+git clone https://github.com/tshneour/SVRecalibrator.git
 ```
 
 ---
