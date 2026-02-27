@@ -413,8 +413,6 @@ def check_overlap(left, right, leftover):
 
             for row_l in fr.itertuples():
                 for row_r in lr.itertuples():
-                    lcommon_var = row_l.rev_clipped
-                    rcommon_var = row_r.rev_clipped
                     l_ori = row_l.break_orientation[0] if row_l.begin and row_l.end else ("+" if row_l.end else "-")
                     r_ori = row_r.break_orientation[1] if row_r.begin and row_r.end else ("+" if row_r.end else "-")
 
@@ -513,8 +511,8 @@ def check_overlap(left, right, leftover):
                                 "left_soft_matches_ins": [left_matches_ins],
                                 "right_soft_matches_ins": [right_matches_ins],
                                 "total_reads": [total_reads],
-                                "lcommon_var": [lcommon_var],
-                                "rcommon_var": [rcommon_var],
+                                "lcommon_var": [seq1],
+                                "rcommon_var": [seq2],
                                 "left": [ldf_copy.copy()],
                                 "right": [rdf.copy()],
                             }
