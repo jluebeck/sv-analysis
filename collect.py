@@ -787,6 +787,7 @@ if __name__ == "__main__":
 
     # Turn groups of split reads into aggregated series
     def sv_summary(grp):
+        break_chrom1, break_pos1 = grp.name
         mask_left = grp["is_left"]
         mask_right = ~mask_left
 
@@ -803,7 +804,7 @@ if __name__ == "__main__":
 
         all_left_within_10 = (
             grp.loc[mask_left, "ref_pos"]
-            .sub(grp.loc[mask_left, "break_pos1"])
+            .sub(break_pos1)
             .abs()
             .le(10)
             .all()
@@ -982,9 +983,6 @@ if __name__ == "__main__":
             columns=["homology_len", "homology_seq"], errors="ignore"
         )
 
-    print(leftover_output)
-    print(final_output)
-    print(args.file)
     final_output.to_csv(
         args.file if args.file else args.bam.split("/")[-1].split(".")[0] + ".tsv",
         sep="\t",

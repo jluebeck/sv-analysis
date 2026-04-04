@@ -38,14 +38,29 @@ def find_longest_common_variant(strs):
     return result
 
 def top3_find_longest_common_variant(strs):
+    if len(strs) == 0:
+        return np.array([], dtype=object)
+    
     strs_list = strs.tolist()
     str_counts = dict({ k:0 for k in strs_list })
     trie = marisa_trie.Trie(strs_list)
+    top3 = []
+
     for strn in strs:
         num_prefixes = len(trie.prefixes(strn))
         str_counts[strn] += num_prefixes if strn not in str_counts else 1
-    sorted_str_counts = list(sorted(str_counts.items(), key = lambda item: item[1]))
-    return np.array([seq for seq, val in sorted_str_counts[-3:]])
+
+    for i in range(3):
+        if len(str_counts) == 0:
+            break
+        max_strn = max(str_counts, key=str_counts.get)
+        str_counts.pop(max_strn)
+        top3.append(max_strn)
+        prefixes = trie.prefixes(max_strn)
+        for strn in prefixes:
+            str_counts.pop(strn, None)
+
+    return np.array(top3, dtype=object)
 
 def rev_comp(seq):
     trans = str.maketrans("ACGT", "TGCA")
@@ -95,10 +110,12 @@ def refine_step1(reads, all_reads, leftover, verbose, is_left):
     reads["end"] = reads["query_cigar"].str.contains(r"\d+[SH]$", regex=True)
     leftover["end"] = leftover["query_cigar"].str.contains(r"\d+[SH]$", regex=True)
     reads["sv_end"] = reads["query_pos"].where(reads["begin"])
-    reads["sv_end"].fillna(reads["query_end"].where(reads["end"]), inplace=True)
+    reads["sv_end"] = reads["sv_end"].fillna(reads["query_end"].where(reads["end"], other=pd.NA))
     reads.dropna(subset=["sv_end"], inplace=True)
+
     mask_ori = ((reads["break_orientation"].str.get(0) == "+") & reads["end"]) | ((reads["break_orientation"].str.get(0) == "-") & reads["begin"]) if is_left else ((reads["break_orientation"].str.get(1) == "+") & reads["end"]) | ((reads["break_orientation"].str.get(1) == "-") & reads["begin"])
     mask_not_mul_clips = (reads["begin"] ^ reads["end"])
+
     reads = reads[(mask_ori & mask_not_mul_clips)]
 
     if verbose >= 2:
@@ -430,9 +447,9 @@ def check_overlap(left, right, leftover):
                         (rdf, s1_no, "hom_clip_match"),
                     ):
                         def check_starts(seq):
-                            return target_no.startswith(seq) or target_no in seq
+                            return target_no.startswith(seq, 0, min(len(target_no), len(seq)))
                         def check_ends(seq):
-                            return target_no.endswith(seq) or target_no in seq
+                            return target_no.endswith(seq, len(target_no) - min(len(target_no), len(seq)))
                         if df is ldf_copy:
                             df[name] = np.frompyfunc(check_starts, 1, 1)(df["rev_clipped"])
                         else:
@@ -440,7 +457,6 @@ def check_overlap(left, right, leftover):
                     
                     hsum_l = ldf_copy["hom_clip_match"].sum()
                     hsum_r = rdf["hom_clip_match"].sum()
-
                     # insertion matching
                     ins, ilen, isum_l, isum_r = find_top_insertion(ldf_copy, rdf, seq1, seq2)
 
@@ -451,10 +467,10 @@ def check_overlap(left, right, leftover):
                         ):
 
                             def check_starts(seq):
-                                return target_no.startswith(seq) or target_no in seq
+                                return target_no.startswith(seq, 0, min(len(target_no), len(seq)))
                             def check_ends(seq):
-                                return target_no.endswith(seq) or target_no in seq
-                            if df is ldf:
+                                return target_no.endswith(seq, len(target_no) - min(len(target_no), len(seq)))
+                            if df is ldf_copy:
                                 df[name] = np.frompyfunc(check_starts, 1, 1)(df["rev_clipped"])
                             else:
                                 df[name] = np.frompyfunc(check_ends, 1, 1)(df["rev_clipped"])
@@ -464,7 +480,6 @@ def check_overlap(left, right, leftover):
                         hom = ""
                         hlen = 0
                 
-                    
                     if (hsum_l == 0 or hsum_r == 0) and (isum_l == 0 or isum_r == 0):
                         continue
 
@@ -585,6 +600,7 @@ def run_split(args):
                 (sv["query_pos"] >= bp2 - 500)
                 & (sv["query_end"] <= bp2 + 500)
             ]
+
 
         _, lgrp = refine_step1(left, all_reads, leftover_splits, args.verbose, True)
         _, rgrp = refine_step1(right, all_reads, leftover_splits, args.verbose, False)
@@ -753,7 +769,6 @@ def extract_region(fasta, region):
 def generate_scaffolds(fq1, fq2, out_dir, args):
     shutil.rmtree(out_dir, ignore_errors=True)
     cmd = [
-        "python",
         "spades.py",
         "--meta",
         "--pe1-1",
