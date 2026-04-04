@@ -728,7 +728,26 @@ if __name__ == "__main__":
 
     samfile.close()
 
-    output = pd.concat(output, ignore_index=True) if output else pd.DataFrame()
+    if not output:
+        print("No reads collected for any breakpoint — writing empty output files.")
+        empty_cols = [
+            "break_chrom1", "break_pos1", "break_chrom2", "break_pos2",
+            "break_sv_type", "break_orientation",
+            "query_name", "query_short", "split", "proper_pair", "read_num",
+            "query_chrom", "query_pos", "query_end", "query_orientation",
+            "query_cigar", "query_aln_full", "query_aln_sub", "sample",
+        ]
+        out_stem = args.file if args.file else args.bam.split("/")[-1].split(".")[0] + ".tsv"
+        pd.DataFrame(columns=empty_cols).to_csv(out_stem, sep="\t", index=False)
+        leftover_stem = (
+            args.file.split("/")[-1].split(".")[0] + "_leftover.tsv"
+            if args.file
+            else args.bam.split("/")[-1].split(".")[0] + "_leftover.tsv"
+        )
+        pd.DataFrame(columns=empty_cols).to_csv(leftover_stem, sep="\t", index=False)
+        import sys; sys.exit(0)
+
+    output = pd.concat(output, ignore_index=True)
     leftover_output = (
         pd.concat(leftover_output, ignore_index=True)
         if leftover_output
@@ -787,7 +806,16 @@ if __name__ == "__main__":
 
     # Turn groups of split reads into aggregated series
     def sv_summary(grp):
+<<<<<<< Updated upstream
         break_chrom1, break_pos1 = grp.name
+=======
+<<<<<<< Updated upstream
+=======
+        # grp.name is a (break_chrom1, break_pos1) tuple; pandas 3.0 removed
+        # groupby keys from the grp DataFrame, so we read break_pos1 this way.
+        break_chrom1, break_pos1 = grp.name
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
         mask_left = grp["is_left"]
         mask_right = ~mask_left
 

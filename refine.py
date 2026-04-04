@@ -551,8 +551,11 @@ def run_split(args):
     all_reads = pd.read_csv(args.file, sep="\t").drop_duplicates()
 
     if all_reads.empty:
-        print(f"{args.file} is empty, no results to report from split read analysis")
-        split_log.write(f"{args.file} is empty, no results to report from split read analysis")
+        msg = f"{args.file} is empty, no results to report from split read analysis"
+        print(msg)
+        split_log.write(msg)
+        split_log.close()
+        return None
 
     leftover_splits = pd.read_csv(args.file[:-4] + "_leftover" + ".tsv", sep="\t").drop_duplicates()
     has_homology = ("homology_len" in all_reads.columns) and ("homology_seq" in all_reads.columns)
@@ -934,6 +937,9 @@ def aln_err_density(alns):
 
 def run_scaffold(args):
     df_all = pd.read_csv(args.file, sep="\t")
+    if df_all.empty:
+        print(f"{args.file} is empty, no results to report from scaffold analysis")
+        return None
     has_homology = ("homology_len" in df_all.columns) and ("homology_seq" in df_all.columns)
     has_read_support = "break_read_support" in df_all.columns
     has_features = "break_features" in df_all.columns
@@ -1272,32 +1278,38 @@ def main():
         if not args.fasta:
             p.error("--fasta is required in scaffold mode")
         out = run_scaffold(args)
-        out.to_csv(args.out_table, sep="\t", index=False)
+        if out is not None:
+            out.to_csv(args.out_table, sep="\t", index=False)
+        else:
+            pd.DataFrame().to_csv(args.out_table, sep="\t", index=False)
     else:
         if not args.fasta:
             p.error("--fasta is required in scaffold mode")
         out_sc = run_scaffold(args)
         out_split = run_split(args)
-        final = pd.concat(
-            [
-                out_sc.reset_index(drop=True),
-                out_split[
-                    [
-                        "split_support",
-                        "soft_support",
-                        "left_soft_matches",
-                        "right_soft_matches",
-                        "sp_left_sv",
-                        "sp_right_sv",
-                        "sp_hom_len",
-                        "hom",
-                        "tst_cords"
-                    ]
-                ].reset_index(drop=True),
-            ],
-            axis=1,
-        )
-        final.to_csv(args.out_table, sep="\t", index=False)
+        if out_sc is None or out_split is None:
+            pd.DataFrame().to_csv(args.out_table, sep="\t", index=False)
+        else:
+            final = pd.concat(
+                [
+                    out_sc.reset_index(drop=True),
+                    out_split[
+                        [
+                            "split_support",
+                            "soft_support",
+                            "left_soft_matches",
+                            "right_soft_matches",
+                            "sp_left_sv",
+                            "sp_right_sv",
+                            "sp_hom_len",
+                            "hom",
+                            "tst_cords"
+                        ]
+                    ].reset_index(drop=True),
+                ],
+                axis=1,
+            )
+            final.to_csv(args.out_table, sep="\t", index=False)
 
 if __name__ == "__main__":
     main()

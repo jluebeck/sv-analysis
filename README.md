@@ -191,6 +191,63 @@ usage: refine.py FILE [--mode {split,scaffold,both}]
 
 ---
 
+## Batch processing
+
+`batch_run.sh` runs `collect.py` → `refine.py` for every sample in a shared SV summary directory.
+
+### Sample list format
+
+A tab-separated file with at minimum two columns — sample name and BAM path (any additional columns are ignored):
+
+```
+ACHN    /data/bam/ACHN/ACHN.cs.rmdup.bam
+BT474M1 /data/bam/BT474M1/BT474M1.cs.rmdup.bam
+```
+
+### SV summary file naming
+
+Files in the SV summary directory must match either:
+- `<SAMPLE>_amplicon<N>_SV_summary.tsv`  (one file per amplicon)
+- `<SAMPLE>_SV_summary.tsv`              (single file per sample)
+
+### Running
+
+```bash
+# All samples
+bash batch_run.sh \
+  --samples phase2_samples.txt \
+  --sv-dir /data/SV_summaries \
+  --outdir /data/SVRecalibrator_outputs \
+  --fasta /data/ref/hg38.fa \
+  --strict
+
+# Single sample
+bash batch_run.sh \
+  --samples phase2_samples.txt \
+  --sv-dir /data/SV_summaries \
+  --outdir /data/SVRecalibrator_outputs \
+  --fasta /data/ref/hg38.fa \
+  --sample ACHN
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-s / --samples` | required | Tab-separated sample list |
+| `-v / --sv-dir` | required | Directory of SV summary TSV files |
+| `-o / --outdir` | required | Output root directory |
+| `-f / --fasta` | required (scaffold/both) | Indexed reference FASTA |
+| `-m / --mode` | `both` | `split`, `scaffold`, or `both` |
+| `-r / --radius` | `350` | Collect radius (bp) around each breakpoint |
+| `-t / --threads` | `16` | SPAdes threads per sample |
+| `--strict` | off | Only keep reads fully within the breakpoint region |
+| `--sample NAME` | — | Run a single sample instead of all |
+
+Each sample writes to `<outdir>/<SAMPLE>/`. A `done.flag` is created on success; re-runs skip completed samples automatically (delete the flag to force a rerun).
+
+---
+
 ## Working assumptions & tips
 
 * **BAM**: Coordinate-sorted, indexed (`.bai` present).
