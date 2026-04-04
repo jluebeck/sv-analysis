@@ -806,16 +806,9 @@ if __name__ == "__main__":
 
     # Turn groups of split reads into aggregated series
     def sv_summary(grp):
-<<<<<<< Updated upstream
-        break_chrom1, break_pos1 = grp.name
-=======
-<<<<<<< Updated upstream
-=======
         # grp.name is a (break_chrom1, break_pos1) tuple; pandas 3.0 removed
         # groupby keys from the grp DataFrame, so we read break_pos1 this way.
         break_chrom1, break_pos1 = grp.name
->>>>>>> Stashed changes
->>>>>>> Stashed changes
         mask_left = grp["is_left"]
         mask_right = ~mask_left
 
