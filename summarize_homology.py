@@ -394,10 +394,8 @@ def plot_hist(df, prefix):
     series   = _hist_series(df)
     n_tracks = len(series)
 
-    # x range: left at 2nd percentile of combined; right fixed at 50
-    combined = pd.concat([v for v, *_ in series])
-    lo = min(int(np.floor(combined.quantile(0.02))), -1)
-    hi = 50
+    # x range: hard-capped at ±50; values outside pile into the endpoint bins
+    lo, hi = -50, 50
     bins = np.arange(lo - 0.5, hi + 1.5, 1.0)
 
     fig, axes_h = plt.subplots(n_tracks, 1, figsize=(7, 2.5 * n_tracks + 0.8),
@@ -408,7 +406,8 @@ def plot_hist(df, prefix):
 
     for i, (vals, label, color) in enumerate(series):
         ax = axes_h[i]
-        n_over = int((vals > hi).sum())
+        n_lo = int((vals < lo).sum())
+        n_hi = int((vals > hi).sum())
         ax.hist(vals.clip(lo, hi), bins=bins, color=color, alpha=0.78,
                 edgecolor="white", linewidth=0.3)
         ax.axvline(0, color="black", linewidth=0.8, linestyle="--", zorder=3)
@@ -416,8 +415,13 @@ def plot_hist(df, prefix):
         ax.text(0.01, 0.93, label, transform=ax.transAxes,
                 ha="left", va="top", fontsize=9, fontweight="bold", color=color,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.6))
-        if n_over:
-            ax.text(0.99, 0.93, f"+{n_over} in ≥50 bin",
+        notes = []
+        if n_lo:
+            notes.append(f"+{n_lo} in ≤−50 bin")
+        if n_hi:
+            notes.append(f"+{n_hi} in ≥50 bin")
+        if notes:
+            ax.text(0.99, 0.93, "  ".join(notes),
                     transform=ax.transAxes, ha="right", va="top",
                     fontsize=7, color="gray")
         if i == 0:
@@ -436,12 +440,15 @@ def plot_hist(df, prefix):
     for ax in axes_h:
         ax.set_ylim(0, max_y)
 
-    # Label the ≥50 tick on the bottom axis
+    # Label the ≤−50 and ≥50 endpoint ticks on the bottom axis
     bot = axes_h[-1]
     from matplotlib.ticker import FixedLocator
-    ticks = sorted(set(list(bot.get_xticks()) + [50]))
+    ticks = sorted(set(list(bot.get_xticks()) + [lo, hi]))
     bot.xaxis.set_major_locator(FixedLocator(ticks))
-    bot.set_xticklabels(["≥50" if t == 50 else str(int(t)) for t in ticks], fontsize=8)
+    bot.set_xticklabels(
+        ["≤−50" if t == lo else "≥50" if t == hi else str(int(t)) for t in ticks],
+        fontsize=8,
+    )
 
     axes_h[0].set_title("Junction length distributions", fontsize=10)
     axes_h[-1].set_xlabel("Junction length (bp)     ← insertion  |  homology →", fontsize=9)
