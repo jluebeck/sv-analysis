@@ -254,17 +254,21 @@ Each sample writes to `<outdir>/<SAMPLE>/`. A `done.flag` is created on success;
 `summarize_homology.py` loads all `final_augmented.tsv` files from a batch output directory and reports how many SVs gained microhomology by split-read and/or scaffold approaches that were absent from the original AA calls.
 
 ```bash
-# Print summary to stdout
+# Print summary to stdout only
 python summarize_homology.py /data/SVRecalibrator_outputs
 
-# Also save the per-sample table as a CSV
-python summarize_homology.py /data/SVRecalibrator_outputs --out-csv summary_per_sample.csv
+# Save all outputs under a common prefix
+python summarize_homology.py /data/SVRecalibrator_outputs -o /data/results/summary
+# produces:
+#   summary_summary.csv   — per-sample table
+#   summary_venn.png/.pdf — proportional Euler diagram (AA vs SVRecalibrator)
+#   summary_hist.png/.pdf — stacked junction-length histograms (AA / split / scaffold)
 
 # Restrict to specific samples or raise the minimum homology length
 python summarize_homology.py /data/SVRecalibrator_outputs \
   --sample ACHN BT474M1 \
   --min-hom-len 3 \
-  --out-csv summary_per_sample.csv
+  -o /data/results/summary
 ```
 
 **Options:**
@@ -274,9 +278,9 @@ python summarize_homology.py /data/SVRecalibrator_outputs \
 | `outdir` | required | Batch output directory (one subdirectory per sample) |
 | `--sample NAME [...]` | all | Restrict to these sample(s) |
 | `--min-hom-len N` | `1` | Minimum homology length to count as detected |
-| `--out-csv FILE` | — | Write per-sample table to this CSV file |
+| `-o / --output-prefix PREFIX` | — | Prefix for all output files (CSV + two plots × two formats) |
 
-**Output sections:**
+**Output sections (stdout):**
 
 1. **Dataset overview** — samples loaded, total SVs, AA homology prevalence
 2. **SVRecalibrator detection (all SVs)** — split / scaffold / both / either, with percentages
@@ -285,7 +289,12 @@ python summarize_homology.py /data/SVRecalibrator_outputs \
 5. **Homology length distributions** — median / mean / min / max / IQR per approach
 6. **Per-sample breakdown** — per-row counts for every sample
 
-Blunt junctions (`homology_len == 0`, `sc_hom_len == 0`, `sp_hom_len == 0`) are correctly excluded from all "detected" counts. Samples with empty `final_augmented.tsv` files are silently skipped.
+**Plots:**
+
+- **Venn diagram** — proportional Euler diagram with geometrically correct circle areas and overlap; circle labels shown as a legend. When AA homology data is absent, falls back to split-read vs scaffold.
+- **Stacked histograms** — junction lengths (negative = insertion, positive = homology) for AA, split reads, and scaffold on separate tracks with shared axes and uniform y-limits. Values > 50 bp are binned into a ≥50 bin. The top track includes insertion/homology region shading and legend.
+
+Blunt junctions (`*_hom_len == 0`) are included in the histograms but excluded from all "detected" counts. Samples with empty `final_augmented.tsv` files are silently skipped.
 
 ---
 
