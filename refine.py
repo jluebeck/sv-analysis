@@ -784,7 +784,8 @@ def generate_scaffolds(fq1, fq2, out_dir, args):
         "-t",
         str(args.threads)
     ]
-    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    timeout = args.spades_timeout * 3600 if args.spades_timeout > 0 else None
+    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
     if r.returncode or not os.path.isfile(f"{out_dir}/scaffolds.fasta"):
         raise RuntimeError(f"SPAdes failed:\n{r.stderr, r.stdout}")
     seqs = []
@@ -992,6 +993,13 @@ def run_scaffold(args):
         scaffs = None
         try:
             scaffs = generate_scaffolds(fq1, fq2, bp_out, args)
+        except subprocess.TimeoutExpired:
+            msg = f"breakpoint {idx + 1}: SPAdes exceeded the time limit ({args.spades_timeout:.4g}h) and was killed — skipping."
+            print(msg)
+            scaffold_log.write(f"=== Breakpoint {idx + 1} ===\n")
+            scaffold_log.write(msg + "\n")
+            summary.append({"sc_pos1": None, "sc_pos2": None, "sc_hom_len": None, "sc_hom": None})
+            continue
         except RuntimeError as ex:
             print(
                 f"breakpoint {idx + 1}: SpAdes ran into an error. Check that your input arguments are correct. This may also be due to low coverage.\n"
@@ -1266,6 +1274,13 @@ def main():
         help="how many threads to use for the assembler",
     )
     p.add_argument("--fasta", help="indexed FASTA for extract_region")
+    p.add_argument(
+        "--spades-timeout",
+        type=float,
+        default=2.0,
+        metavar="HOURS",
+        help="time limit for each SPAdes run in hours; 0 = no limit (default: 2.0)",
+    )
 
     args = p.parse_args()
     args.out_table = args.out_table + ".tsv"

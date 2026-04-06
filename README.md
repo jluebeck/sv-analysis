@@ -241,10 +241,51 @@ bash batch_run.sh \
 | `-m / --mode` | `both` | `split`, `scaffold`, or `both` |
 | `-r / --radius` | `350` | Collect radius (bp) around each breakpoint |
 | `-t / --threads` | `16` | SPAdes threads per sample |
+| `--spades-timeout HOURS` | `2` | Per-breakpoint SPAdes time limit in hours; `0` = no limit |
 | `--strict` | off | Only keep reads fully within the breakpoint region |
 | `--sample NAME` | — | Run a single sample instead of all |
 
-Each sample writes to `<outdir>/<SAMPLE>/`. A `done.flag` is created on success; re-runs skip completed samples automatically (delete the flag to force a rerun).
+Each sample writes to `<outdir>/<SAMPLE>/`. A `done.flag` is created on success; re-runs skip completed samples automatically. If a sample directory exists without a `done.flag` (i.e., a previously interrupted run), the directory is cleared and the sample is re-run from scratch.
+
+---
+
+## Summarizing homology improvement
+
+`summarize_homology.py` loads all `final_augmented.tsv` files from a batch output directory and reports how many SVs gained microhomology by split-read and/or scaffold approaches that were absent from the original AA calls.
+
+```bash
+# Print summary to stdout
+python summarize_homology.py /data/SVRecalibrator_outputs
+
+# Also save the per-sample table as a CSV
+python summarize_homology.py /data/SVRecalibrator_outputs --out-csv summary_per_sample.csv
+
+# Restrict to specific samples or raise the minimum homology length
+python summarize_homology.py /data/SVRecalibrator_outputs \
+  --sample ACHN BT474M1 \
+  --min-hom-len 3 \
+  --out-csv summary_per_sample.csv
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `outdir` | required | Batch output directory (one subdirectory per sample) |
+| `--sample NAME [...]` | all | Restrict to these sample(s) |
+| `--min-hom-len N` | `1` | Minimum homology length to count as detected |
+| `--out-csv FILE` | — | Write per-sample table to this CSV file |
+
+**Output sections:**
+
+1. **Dataset overview** — samples loaded, total SVs, AA homology prevalence
+2. **SVRecalibrator detection (all SVs)** — split / scaffold / both / either, with percentages
+3. **Gain over AA** — among SVs with no AA homology: how many gained it and by which approach
+4. **Concordance** — on SVs AA did call, how many SVRecalibrator confirmed
+5. **Homology length distributions** — median / mean / min / max / IQR per approach
+6. **Per-sample breakdown** — per-row counts for every sample
+
+Blunt junctions (`homology_len == 0`, `sc_hom_len == 0`, `sp_hom_len == 0`) are correctly excluded from all "detected" counts. Samples with empty `final_augmented.tsv` files are silently skipped.
 
 ---
 

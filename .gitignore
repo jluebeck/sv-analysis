@@ -2,5 +2,7 @@
 
 !collect.py
 !refine.py
+!batch_run.sh
+!summarize_homology.py
 !README.md
 !install.sh
