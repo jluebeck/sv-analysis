@@ -16,6 +16,10 @@ import sys
 import numpy as np
 import pandas as pd
 from pandas.errors import EmptyDataError
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -208,6 +212,244 @@ def summarize(df, min_hom_len):
     return tbl
 
 
+# ── plotting ──────────────────────────────────────────────────────────────────
+
+def _circle_intersection_area(r1, r2, d):
+    """Intersection area of two circles with radii r1, r2 and centre distance d."""
+    if d >= r1 + r2:
+        return 0.0
+    if d + min(r1, r2) <= max(r1, r2):
+        return np.pi * min(r1, r2) ** 2
+    a = np.arccos(np.clip((d**2 + r1**2 - r2**2) / (2 * d * r1), -1, 1))
+    b = np.arccos(np.clip((d**2 + r2**2 - r1**2) / (2 * d * r2), -1, 1))
+    c = 0.5 * np.sqrt(max((-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2), 0))
+    return r1**2 * a + r2**2 * b - c
+
+
+def _find_centre_distance(r1, r2, target_area):
+    """Binary-search for the centre distance that yields target_area overlap."""
+    if target_area <= 0:
+        return r1 + r2
+    max_area = np.pi * min(r1, r2) ** 2
+    if target_area >= max_area:
+        return abs(r1 - r2)
+    lo, hi = float(abs(r1 - r2)), float(r1 + r2)
+    for _ in range(64):
+        mid = (lo + hi) / 2
+        if _circle_intersection_area(r1, r2, mid) > target_area:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def _draw_venn(ax, sets, labels, colors):
+    """
+    Proportional Euler diagram: rectangle + two circles with geometrically
+    correct areas and overlap.
+    sets  : (total, n_left, n_right, n_both)
+    labels: (title, left_label, right_label)
+    colors: (left_color, right_color)
+    """
+    total, n_left, n_right, n_both = sets
+    title, left_label, right_label = labels
+    lc, rc = colors
+
+    W, H   = 10.0, 7.0
+    pad    = 0.45
+    rx, ry = pad, pad
+    rw, rh = W - 2 * pad, H - 2 * pad
+
+    ax.set_xlim(0, W)
+    ax.set_ylim(0, H)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    # Rectangle — all SVs
+    ax.add_patch(mpatches.FancyBboxPatch(
+        (rx, ry), rw, rh,
+        boxstyle="round,pad=0.05",
+        linewidth=1.5, edgecolor="#444", facecolor="whitesmoke", zorder=0,
+    ))
+
+    # Scale: map SV count → display area so areas are truly proportional
+    k = (rw * rh) / total
+    r_l = np.sqrt(n_left  * k / np.pi) if n_left  else 0.0
+    r_r = np.sqrt(n_right * k / np.pi) if n_right else 0.0
+
+    # Clamp so neither circle overflows the rectangle
+    max_r = min(rw, rh) / 2 * 0.97
+    sf = min(1.0, max_r / max(r_l, r_r, 1e-9))
+    r_l *= sf
+    r_r *= sf
+
+    # Solve for the centre distance that gives the correct overlap area
+    target_overlap = n_both * k * sf ** 2
+    d = _find_centre_distance(r_l, r_r, target_overlap)
+
+    # Centre both circles symmetrically about the rectangle centre
+    cx = rx + rw / 2
+    cy = ry + rh / 2
+    cx_l = cx - d / 2
+    cx_r = cx + d / 2
+
+    ax.add_patch(plt.Circle((cx_l, cy), r_l, color=lc, alpha=0.40, zorder=2))
+    ax.add_patch(plt.Circle((cx_r, cy), r_r, color=rc, alpha=0.40, zorder=2))
+
+    # ── region counts ──────────────────────────────────────────────────────────
+    n_l_only  = n_left  - n_both
+    n_r_only  = n_right - n_both
+    n_neither = total   - n_left - n_right + n_both
+
+    kw = dict(ha="center", va="center", fontsize=11, fontweight="bold", zorder=4)
+
+    # "both" — centre of the overlap zone
+    ax.text((cx_l + cx_r) / 2, cy, str(n_both), **kw)
+
+    # right-only — well inside right crescent
+    ax.text(cx_r + r_r * 0.58, cy, str(n_r_only), **kw)
+
+    # left-only — annotate outside with arrow if region is too small to label in place
+    if n_l_only / total < 0.02:
+        ax.annotate(
+            str(n_l_only),
+            xy=(cx_l - r_l * 0.92, cy),
+            xytext=(rx + 0.3, ry + rh * 0.82),
+            fontsize=10, fontweight="bold", color=lc, zorder=4,
+            arrowprops=dict(arrowstyle="-|>", color=lc, lw=0.9),
+        )
+    else:
+        ax.text(cx_l - r_l * 0.58, cy, str(n_l_only), **kw)
+
+    # neither — bottom-left, well inside rectangle
+    ax.text(rx + 0.3, ry + 0.35, str(n_neither),
+            fontsize=9, color="dimgray", zorder=4, va="bottom")
+
+    # total label — top-left
+    ax.text(rx + 0.3, ry + rh - 0.25, f"n = {total}",
+            fontsize=9, va="top", color="#444", zorder=4)
+
+    # circle labels as a legend box — avoids placement issues with nested circles
+    legend_patches = [
+        mpatches.Patch(facecolor=lc, alpha=0.55, label=left_label),
+        mpatches.Patch(facecolor=rc, alpha=0.55, label=right_label),
+    ]
+    ax.legend(handles=legend_patches, loc="lower right",
+              bbox_to_anchor=(0.97, 0.03), framealpha=0.88,
+              fontsize=9, edgecolor="#aaa")
+
+    ax.set_title(title, fontsize=11, pad=6)
+
+
+def _save_fig(fig, prefix, suffix):
+    for ext in (".png", ".pdf"):
+        path = prefix + suffix + ext
+        fig.savefig(path, dpi=300, bbox_inches="tight")
+        print(f"Written: {path}")
+    plt.close(fig)
+
+
+def _hist_series(df):
+    """Return ordered (values, label, color) tuples for the three histogram tracks."""
+    has_aa = "homology_len" in df.columns
+    aa_has_data = has_aa and pd.to_numeric(df["homology_len"], errors="coerce").notna().any()
+    sp_vals = df["_sp_hom_len_int"].dropna()
+    sc_vals = df["_sc_hom_len_num"].dropna()
+    series = []
+    if aa_has_data:
+        aa_vals = pd.to_numeric(df["homology_len"], errors="coerce").dropna()
+        series.append((aa_vals, "AA", "#D65F5F"))
+    series.append((sp_vals, "Split reads", "#4878CF"))
+    series.append((sc_vals, "Scaffold",    "#6ACC65"))
+    return series
+
+
+def plot_venn(df, prefix):
+    has_aa = "homology_len" in df.columns
+    total  = len(df)
+
+    fig, ax_v = plt.subplots(figsize=(6, 5.5))
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.93, bottom=0.02)
+
+    if has_aa and df["aa_hom"].any():
+        n_aa   = int(df["aa_hom"].sum())
+        n_sv   = int(df["either_hom"].sum())
+        n_both = int((df["aa_hom"] & df["either_hom"]).sum())
+        _draw_venn(ax_v, (total, n_aa, n_sv, n_both),
+                   ("SVs by homology detection source", "AA", "SVRecalibrator"),
+                   ("#4878CF", "#D65F5F"))
+    else:
+        n_sp   = int(df["sp_hom"].sum())
+        n_sc   = int(df["sc_hom"].sum())
+        n_both = int((df["sp_hom"] & df["sc_hom"]).sum())
+        _draw_venn(ax_v, (total, n_sp, n_sc, n_both),
+                   ("SVs by homology detection source", "Split reads", "Scaffold"),
+                   ("#4878CF", "#6ACC65"))
+
+    fig.suptitle("SVRecalibrator — microhomology summary", fontsize=12, fontweight="bold")
+    _save_fig(fig, prefix, "_venn")
+
+
+def plot_hist(df, prefix):
+    series   = _hist_series(df)
+    n_tracks = len(series)
+
+    # x range: left at 2nd percentile of combined; right fixed at 50
+    combined = pd.concat([v for v, *_ in series])
+    lo = min(int(np.floor(combined.quantile(0.02))), -1)
+    hi = 50
+    bins = np.arange(lo - 0.5, hi + 1.5, 1.0)
+
+    fig, axes_h = plt.subplots(n_tracks, 1, figsize=(7, 2.5 * n_tracks + 0.8),
+                                sharex=True)
+    if n_tracks == 1:
+        axes_h = [axes_h]
+    fig.subplots_adjust(left=0.11, right=0.97, top=0.91, bottom=0.10, hspace=0.08)
+
+    for i, (vals, label, color) in enumerate(series):
+        ax = axes_h[i]
+        n_over = int((vals > hi).sum())
+        ax.hist(vals.clip(lo, hi), bins=bins, color=color, alpha=0.78,
+                edgecolor="white", linewidth=0.3)
+        ax.axvline(0, color="black", linewidth=0.8, linestyle="--", zorder=3)
+        ax.set_ylabel("Count", fontsize=8)
+        ax.text(0.01, 0.93, label, transform=ax.transAxes,
+                ha="left", va="top", fontsize=9, fontweight="bold", color=color,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.6))
+        if n_over:
+            ax.text(0.99, 0.93, f"+{n_over} in ≥50 bin",
+                    transform=ax.transAxes, ha="right", va="top",
+                    fontsize=7, color="gray")
+        if i == 0:
+            ax.axvspan(lo - 0.5, 0, alpha=0.06, color="orange", zorder=0)
+            ax.axvspan(0, hi + 0.5, alpha=0.06, color="steelblue", zorder=0)
+            ax.legend(handles=[
+                mpatches.Patch(facecolor="orange",    alpha=0.5, label="insertion (< 0)"),
+                mpatches.Patch(facecolor="steelblue", alpha=0.5, label="homology (> 0)"),
+            ], fontsize=7, loc="upper right", framealpha=0.8)
+        if i < n_tracks - 1:
+            ax.tick_params(labelbottom=False)
+        ax.tick_params(axis="both", labelsize=8)
+
+    # Uniform y-limits
+    max_y = max(ax.get_ylim()[1] for ax in axes_h)
+    for ax in axes_h:
+        ax.set_ylim(0, max_y)
+
+    # Label the ≥50 tick on the bottom axis
+    bot = axes_h[-1]
+    from matplotlib.ticker import FixedLocator
+    ticks = sorted(set(list(bot.get_xticks()) + [50]))
+    bot.xaxis.set_major_locator(FixedLocator(ticks))
+    bot.set_xticklabels(["≥50" if t == 50 else str(int(t)) for t in ticks], fontsize=8)
+
+    axes_h[0].set_title("Junction length distributions", fontsize=10)
+    axes_h[-1].set_xlabel("Junction length (bp)     ← insertion  |  homology →", fontsize=9)
+
+    fig.suptitle("SVRecalibrator — microhomology summary", fontsize=12, fontweight="bold")
+    _save_fig(fig, prefix, "_hist")
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def main():
@@ -222,9 +464,9 @@ def main():
         help="minimum homology length to count as detected (default: 1)",
     )
     p.add_argument(
-        "--out-csv",
-        metavar="FILE",
-        help="write per-sample summary table to this CSV file",
+        "-o", "--output-prefix",
+        metavar="PREFIX",
+        help="output prefix; produces <PREFIX>_summary.csv, <PREFIX>_venn.png, <PREFIX>_hist.png",
     )
     args = p.parse_args()
 
@@ -234,9 +476,11 @@ def main():
     df = load_augmented(args.outdir, args.sample)
     df = classify(df, args.min_hom_len)
     tbl = summarize(df, args.min_hom_len)
-    if args.out_csv:
-        tbl.to_csv(args.out_csv)
-        print(f"Per-sample table written to {args.out_csv}")
+    if args.output_prefix:
+        tbl.to_csv(args.output_prefix + "_summary.csv")
+        print(f"Written: {args.output_prefix}_summary.csv")
+        plot_venn(df, args.output_prefix)
+        plot_hist(df, args.output_prefix)
 
 
 if __name__ == "__main__":
