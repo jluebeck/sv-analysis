@@ -95,6 +95,22 @@ def classify(df, min_hom_len):
     df["sc_hom"] = df["_sc_hom_len_num"] >= min_hom_len
 
     df["either_hom"] = df["sp_hom"] | df["sc_hom"]
+
+    # Insertion flags (negative lengths)
+    if "homology_len" in df.columns:
+        aa_num = pd.to_numeric(df["homology_len"], errors="coerce")
+        df["aa_ins"]   = aa_num < 0
+        df["aa_blunt"] = aa_num == 0
+    else:
+        df["aa_ins"]   = False
+        df["aa_blunt"] = False
+
+    df["sv_ins"]   = (df["_sp_hom_len_int"] < 0) | (df["_sc_hom_len_num"] < 0)
+    df["sv_blunt"] = (df["_sp_hom_len_int"] == 0) | (df["_sc_hom_len_num"] == 0)
+
+    df["aa_any"] = df["aa_hom"] | df["aa_ins"] | df["aa_blunt"]
+    df["sv_any"] = df["either_hom"] | df["sv_ins"] | df["sv_blunt"]
+
     return df
 
 
@@ -243,7 +259,7 @@ def _find_centre_distance(r1, r2, target_area):
     return (lo + hi) / 2
 
 
-def _draw_venn(ax, sets, labels, colors):
+def _draw_venn(ax, sets, labels, colors, neither_label=None):
     """
     Proportional Euler diagram: rectangle + two circles with geometrically
     correct areas and overlap.
@@ -321,12 +337,18 @@ def _draw_venn(ax, sets, labels, colors):
     else:
         ax.text(cx_l - r_l * 0.58, cy, str(n_l_only), **kw)
 
-    # neither — bottom-left, well inside rectangle
-    ax.text(rx + 0.3, ry + 0.35, str(n_neither),
-            fontsize=9, color="dimgray", zorder=4, va="bottom")
+    # neither — bottom-left; emphasised when a label is provided
+    if neither_label:
+        ax.text(rx + 0.3, ry + 0.3, str(n_neither),
+                fontsize=14, fontweight="bold", color="#444", zorder=4, va="bottom")
+        ax.text(rx + 0.3, ry + 1.05, neither_label,
+                fontsize=9, color="#444", zorder=4, va="bottom", style="italic")
+    else:
+        ax.text(rx + 0.3, ry + 0.35, str(n_neither),
+                fontsize=9, color="dimgray", zorder=4, va="bottom")
 
     # total label — top-left
-    ax.text(rx + 0.3, ry + rh - 0.25, f"n = {total}",
+    ax.text(rx + 0.3, ry + rh - 0.25, f"n={total} total SVs",
             fontsize=9, va="top", color="#444", zorder=4)
 
     # circle labels as a legend box — avoids placement issues with nested circles
@@ -368,26 +390,53 @@ def plot_venn(df, prefix):
     has_aa = "homology_len" in df.columns
     total  = len(df)
 
-    fig, ax_v = plt.subplots(figsize=(6, 5.5))
-    fig.subplots_adjust(left=0.02, right=0.98, top=0.93, bottom=0.02)
-
-    if has_aa and df["aa_hom"].any():
-        n_aa   = int(df["aa_hom"].sum())
-        n_sv   = int(df["either_hom"].sum())
-        n_both = int((df["aa_hom"] & df["either_hom"]).sum())
-        _draw_venn(ax_v, (total, n_aa, n_sv, n_both),
-                   ("SVs by homology detection source", "AA", "SVRecalibrator"),
-                   ("#4878CF", "#D65F5F"))
+    if has_aa:
+        # 1×3: homology / insertion / blunt
+        fig, axes = plt.subplots(1, 3, figsize=(16, 5.5))
+        fig.subplots_adjust(left=0.01, right=0.99, top=0.88, bottom=0.02, wspace=0.06)
+        panels = [
+            ("Homology (> 0)",  "aa_hom",   "either_hom", "#D65F5F"),
+            ("Insertion (< 0)", "aa_ins",   "sv_ins",     "#E8A838"),
+            ("Blunt (= 0)",     "aa_blunt", "sv_blunt",   "#6ACC65"),
+        ]
+        for ax, (title, aa_col, sv_col, rc) in zip(axes, panels):
+            n_aa   = int(df[aa_col].sum())
+            n_sv   = int(df[sv_col].sum())
+            n_both = int((df[aa_col] & df[sv_col]).sum())
+            _draw_venn(ax, (total, n_aa, n_sv, n_both),
+                       (title, "AA", "SVRecalibrator"),
+                       ("#4878CF", rc))
     else:
+        # Fallback: single panel, split reads vs scaffold (homology only)
+        fig, ax = plt.subplots(figsize=(6, 5.5))
+        fig.subplots_adjust(left=0.02, right=0.98, top=0.88, bottom=0.02)
         n_sp   = int(df["sp_hom"].sum())
         n_sc   = int(df["sc_hom"].sum())
         n_both = int((df["sp_hom"] & df["sc_hom"]).sum())
-        _draw_venn(ax_v, (total, n_sp, n_sc, n_both),
-                   ("SVs by homology detection source", "Split reads", "Scaffold"),
+        _draw_venn(ax, (total, n_sp, n_sc, n_both),
+                   ("Homology (> 0)", "Split reads", "Scaffold"),
                    ("#4878CF", "#6ACC65"))
 
-    fig.suptitle("SVRecalibrator — microhomology summary", fontsize=12, fontweight="bold")
+    fig.suptitle("SVRecalibrator — junction type: AA vs SVRecalibrator",
+                 fontsize=13, fontweight="bold")
     _save_fig(fig, prefix, "_venn")
+
+
+def plot_venn_combined(df, prefix):
+    total = len(df)
+    fig, ax = plt.subplots(figsize=(6, 5.5))
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.88, bottom=0.02)
+
+    n_aa   = int(df["aa_any"].sum())
+    n_sv   = int(df["sv_any"].sum())
+    n_both = int((df["aa_any"] & df["sv_any"]).sum())
+    _draw_venn(ax, (total, n_aa, n_sv, n_both),
+               ("Any junction call", "AA", "SVRecalibrator"),
+               ("#4878CF", "#9B59B6"), neither_label="unrefined")
+
+    fig.suptitle("SVRecalibrator — junction refinement overview",
+                 fontsize=12, fontweight="bold")
+    _save_fig(fig, prefix, "_venn_combined")
 
 
 def plot_hist(df, prefix):
@@ -487,6 +536,7 @@ def main():
         tbl.to_csv(args.output_prefix + "_summary.csv")
         print(f"Written: {args.output_prefix}_summary.csv")
         plot_venn(df, args.output_prefix)
+        plot_venn_combined(df, args.output_prefix)
         plot_hist(df, args.output_prefix)
 
 

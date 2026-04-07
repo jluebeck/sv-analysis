@@ -260,9 +260,10 @@ python summarize_homology.py /data/SVRecalibrator_outputs
 # Save all outputs under a common prefix
 python summarize_homology.py /data/SVRecalibrator_outputs -o /data/results/summary
 # produces:
-#   summary_summary.csv   — per-sample table
-#   summary_venn.png/.pdf — proportional Euler diagram (AA vs SVRecalibrator)
-#   summary_hist.png/.pdf — stacked junction-length histograms (AA / split / scaffold)
+#   summary_summary.csv          — per-sample table
+#   summary_venn.png/.pdf        — proportional Euler diagrams: Homology / Insertion / Blunt (AA vs SVRecalibrator)
+#   summary_venn_combined.png/.pdf — single Euler diagram: any junction call (AA vs SVRecalibrator), with unrefined count
+#   summary_hist.png/.pdf        — stacked junction-length histograms (AA / split / scaffold)
 
 # Restrict to specific samples or raise the minimum homology length
 python summarize_homology.py /data/SVRecalibrator_outputs \
@@ -278,7 +279,7 @@ python summarize_homology.py /data/SVRecalibrator_outputs \
 | `outdir` | required | Batch output directory (one subdirectory per sample) |
 | `--sample NAME [...]` | all | Restrict to these sample(s) |
 | `--min-hom-len N` | `1` | Minimum homology length to count as detected |
-| `-o / --output-prefix PREFIX` | — | Prefix for all output files (CSV + two plots × two formats) |
+| `-o / --output-prefix PREFIX` | — | Prefix for all output files (CSV + plots × two formats) |
 
 **Output sections (stdout):**
 
@@ -291,8 +292,9 @@ python summarize_homology.py /data/SVRecalibrator_outputs \
 
 **Plots:**
 
-- **Venn diagram** — proportional Euler diagram with geometrically correct circle areas and overlap; circle labels shown as a legend. When AA homology data is absent, falls back to split-read vs scaffold.
-- **Stacked histograms** — junction lengths (negative = insertion, positive = homology) for AA, split reads, and scaffold on separate tracks with shared axes and uniform y-limits. Values > 50 bp are binned into a ≥50 bin. The top track includes insertion/homology region shading and legend.
+- **Venn diagram** (`_venn`) — 1×3 proportional Euler diagrams showing AA vs SVRecalibrator overlap separately for Homology, Insertion, and Blunt junctions. Circle areas and overlaps are geometrically correct; labels shown as a legend. When AA data is absent, falls back to split-read vs scaffold.
+- **Combined Venn diagram** (`_venn_combined`) — single Euler diagram showing overlap of any junction call (homology, insertion, or blunt) between AA and SVRecalibrator, with the number of unrefined SVs labelled prominently in the rectangle outside both circles.
+- **Stacked histograms** (`_hist`) — junction lengths (negative = insertion, positive = homology) for AA, split reads, and scaffold on separate tracks with shared axes and uniform y-limits. Values outside ±50 bp are clipped into the ≤−50 and ≥50 bins. The top track includes insertion/homology region shading and legend.
 
 Blunt junctions (`*_hom_len == 0`) are included in the histograms but excluded from all "detected" counts. Samples with empty `final_augmented.tsv` files are silently skipped.
 
